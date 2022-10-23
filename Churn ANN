@@ -1,0 +1,171 @@
+"""
+This project takes data on customer churn (source - xxx) and develops an Artifical Neural Network to predict if a customer will churn or not.
+"""
+
+import os # for changing working directory
+import pandas as pd # for reading in an analysing data
+import numpy as np # for math operations
+import seaborn as sns # for visualisation
+import matplotlib.pyplot as plt # also for visualisation
+
+from sklearn.model_selection import train_test_split # for defining train and test data sets
+from sklearn.preprocessing import MinMaxScaler # for scaling the data prior to running model
+
+from tensorflow.keras.models import Sequential #class the model we will be running
+from tensorflow.keras.layers import Dense, Dropout #The types of hidden layers we'll be using
+from tensorflow.keras.callbacks import EarlyStopping #Our callback type for getting as close as possible to the optimal number of iterations of the model
+from sklearn.metrics import classification_report, confusion_matrix #Reports for model evaluation
+from sklearn.metrics import mean_absolute_error, explained_variance_score #metrics for assessing how effectively the model performs
+
+#Setting working directory
+path = "  " #insert path for the directory you want to work from
+os.chdir(path)
+
+#Read in data
+df = pd.read_csv('internet_service_churn.csv')
+pd.set_option('display.max_columns', 15)
+
+#Let's check out the data
+df.head()
+df.describe() 
+len(df)
+df.info()
+
+# REMAINING CONTRACT HAS LOTS OF MISSING VALUES - ABOUT A THIRD MISSING
+#FOLLOWED BY AVERAGE DOWN/UPLOAD
+
+# Understanding the data a bit better...
+
+# Counts of target variable
+df['churn'].value_counts()
+# Majority of customers churn
+
+#Let's see relationships between the variables
+df.corr() 
+# this isn't the clearest way of getting this info, so let's visualise it
+plt.figure(figsize=(12, 8))
+sns.heatmap(df.corr(), cmap='Greens')
+plt.show()
+
+"""
+Things to consider:
+We have 1 var with lots of missing values: remaining contract
+download and upload average have some missing values
+
+Given number of missing values, we would normally want to think about data imputation, but in this case need to worry about data leakage
+
+Down/upload - related to each other, to bill, a bit related to churn
+"""
+
+#A big concern should be that customers with 0 contract length have already churned
+#Keeping these in the dataset would be data leakage that would affect the model
+#Let's check this out a bit
+df['remaining_contract'].value_counts()
+#Around 20% of values have definitely already churned
+#Therefore this shouldn't be in the data
+df.drop('remaining_contract', axis =1, inplace=True)
+# Also, ID doesn't tell us anything
+df.drop('id', axis =1, inplace=True)
+
+
+#Correlation heatmap might be a bit clearer now
+plt.figure(figsize=(12, 8))
+sns.heatmap(df.corr(), cmap='Greens')
+plt.show()
+
+#what does download over limit show?
+df['download_over_limit'].value_counts()
+
+#Vast majority of users have zero cases. Maybe this would be more informative as a binary variable
+# Firstly, we can test this...
+plt.figure(figsize=(12,8))
+sns.countplot(x='download_over_limit', data=df, hue='churn')
+#Scale make it hard to make much of this
+DL_churn = df[df['churn']==1].groupby("download_over_limit").count()['churn']
+DL_NoChurn = df[df['churn']==0].groupby("download_over_limit").count()['churn']
+DL_churnPC = (DL_churn/(DL_churn + DL_NoChurn))*100
+
+DL_churnPC.plot(kind = 'bar')
+print(DL_churnPC)
+
+#WHAT DECISION TO MAKE? Below is code of how to do it
+#Not running it yet
+#df['download_over_limit'].value_counts().sort_index()
+#df['download_over_limit'] = df['download_over_limit'].apply(lambda x: 1 if x >= 1 else 0)
+#df['download_over_limit'].value_counts().sort_index()
+
+
+#Looking at bill average
+df['bill_avg'].describe()
+plt.hist(df['bill_avg'])
+#Let's zoom in on main spike on the graph
+plt.hist(df['bill_avg'], range=[0,90])
+# so basically all valuea are below 60 dollars
+df.drop(df[df['bill_avg'] >= 60].index , inplace= True)
+len(df['bill_avg']) # lost around 700 observations
+
+
+#Colours re a useful indication of correlation, but let's get select coefficients
+
+df.corr() # looking at last column, none of the other variables are very closely correlated to churn
+# SO don't expect amazing model results
+
+df['bill_avg'].corr(df['download_avg']) # decent correlation
+
+df['upload_avg'].corr(df['download_avg']) # pretty decent
+
+# What is a typical number of service failures?
+plt.hist(df['service_failure_count'])
+# vast majority of users have no service failures, only a few have more than 1, so the guy with 19 is probably an outlier
+# After 19 service failures I'd churn too
+df['service_failure_count'].value_counts()
+
+#Now let's do a little bit more feature engineering and save this as our dataframe for analysis (probably not a great idea for huge datasets)
+
+new_df = df.sort_values('service_failure_count', ascending = True).iloc[:70525]
+new_df['service_failure_count'].value_counts()
+# now have new data
+new_df.info()
+new_df['churn'].value_counts()
+
+new_df = new_df.dropna()
+
+# Let'a define the test and train data sets
+
+Y = new_df['churn'].values
+X = new_df.drop(['churn'], axis = 1).values
+
+X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.3, random_state=101)
+
+#Scale the data given that variable values are of different magnitudes
+scaler = MinMaxScaler()
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)
+
+#Create model
+
+model = Sequential()
+model.add(Dense(8, activation = 'relu'))
+model.add(Dense(8, activation = 'relu'))
+model.add(Dense(1, activation = 'sigmoid'))
+
+earlystop = EarlyStopping(monitor = 'val_loss', patience =8, mode='auto', verbose=1 )
+
+model.compile(loss = 'binary_crossentropy', optimizer = 'adam')
+
+model.fit(x= X_train, y = Y_train, validation_data = (X_test, Y_test), epochs = 100, callbacks = (earlystop))
+
+losses = pd.DataFrame(model.history.history)
+losses.plot()
+
+predictions = model.predict(X_test)
+predictions = np.round(predictions).astype(int)   
+
+mean_absolute_error(Y_test, predictions)
+
+print(confusion_matrix(Y_test, predictions))
+# model gets more right than it does wrong, which is a start
+#more false positive than false negatives
+
+#Forthcoming - pipeline to make predictions for new customer records
+
