@@ -1,0 +1,138 @@
+import os
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+from datetime import date
+import requests
+import schedule
+
+os.getcwd()
+pd.set_option('display.max_columns', 15) #makes it easier to see the data
+
+def get_data():
+ today=date.today()
+ dls = "https://www.ons.gov.uk/file?uri=/employmentandlabourmarket/peopleinwork/employmentandemployeetypes/datasets/summaryoflabourmarketstatistics/current/a01oct2022.xls"
+ resp = requests.get(dls)
+
+ output = open('Labour Market Summary-' + today.strftime("%d-%m-%Y") +('.xls'), 'wb') # Capital Y to get 4 digit year
+ output.write(resp.content)
+ output.close()
+ sheet = f"Labour Market Summary-{date.today().day}-{date.today().month}-{date.today().year}.xls"
+ 
+ 
+def read_region_data():
+    
+    global region_data
+    #region_data = pd.read_excel("C:\\Users\\Laurence\\Labour Market Summary-25-10-22.xls", '22',skiprows=range(0,7))
+    region_data = pd.read_excel(sheet, '22',skiprows=range(0,7))
+    new_header = region_data.iloc[0] #grab the first row for the header
+    region_data = region_data[2:] #take the data less the header row and a blank that follows it
+    region_data.columns = new_header
+    region_data = region_data.dropna(how='all', axis=1)
+    region_data = test.drop(test.index[15:])
+    region_data.columns = ['Area codes', 'Area names', 'Econ Activity Level 16+', 'Econ Activity %, 16-64', 'Employment Level 16+', 'Employment %, 16-64','Unemployment Level 16+', 'Unemployment %, 16+', 'Econ Inactivity level, 16+', 'Econ Inactivity %, 16-64']      
+    region_data.drop('Area codes', axis=1, inplace=True)
+    region_data.loc[7, 'Area names'] = 'Yorks. & Hum.'
+    
+def regional_chart():
+    global region_data
+    A = region_data[['Area names','Unemployment %, 16+']]
+    B = region_data[['Area names','Econ Inactivity %, 16-64']]
+    type(B)
+    C = A.append(B, ignore_index=True)
+    C['Values'] = "" # creates an empty column
+    C['Values'].iloc[0:15] = 'Unemp'
+    C['Values'].iloc[15:] = 'Inactivity'
+    #Now move the unemp and inactivity data into one column
+    C['Data'] =""
+    C['Data'].loc[0:15] = C['Unemployment %, 16+']
+    C['Data'].loc[15:] = C['Econ Inactivity %, 16-64']
+    plt.figure(figsize = (12, 8))
+    plt.xticks(rotation=55, ha = 'right') # ha is the orientation of the labels
+    sns.barplot(x='Area names', y='Data', hue='Values', data=C)
+    sns.despine() 
+    plt.title("Unemployment and Inactivity rates by region", size = 20)
+    plt.xlabel("Region", size=15)
+    plt.ylabel("(%)", size = 15)
+    
+def Quarter_Change():
+    global roc
+    #roc = pd.read_excel(sheet, '22',skiprows=range(0,500))
+    new_header = roc.iloc[0] #grab the first row for the header
+    roc = roc[2:] #take the data less the header row and a blank that follows it
+    roc.columns = new_header #set the header row as the df header
+    roc = roc.dropna(how='all', axis = 1) # This is a neater way dropping the empty columns
+    roc = roc.drop(roc.index[17:])
+    roc.columns = ['Area codes', 'Area names', 'Econ Activity Level 16+', 'Econ Activity %, 16-64', 'Employment Level 16+', 'Employment %, 16-64','Unemployment Level 16+', 'Unemployment %, 16+', 'Econ Inactivity level, 16+', 'Econ Inactivity %, 16-64']      
+    roc.drop('Area codes', axis=1, inplace=True)
+    roc.loc[7, 'Area names'] = 'Yorks. & Hum.' #this will make data vis a bit neater
+    roc = roc.dropna()
+    Unemp = roc[['Area names','Unemployment %, 16+']]
+    Inact = roc[['Area names','Econ Inactivity %, 16-64']]
+    Df = Unemp.append(Inact, ignore_index=True)
+    Df['Values'] = "" # creates an empty column
+    Df['Values'].iloc[0:15] = 'Unemp'
+    Df['Values'].iloc[15:] = 'Inactivity'
+    #Now move the unemp and inactivity data into one column
+    Df['Data']  = ""
+    Df['Data'].loc[0:15] = Df['Unemployment %, 16+']
+    Df['Data'].loc[15:] = Df['Econ Inactivity %, 16-64']
+    
+    plt.figure(figsize = (12, 8))
+    plt.xticks(rotation=55, ha = 'right') # ha is the orientation of the labels
+    sns.barplot(x='Area names', y='Data', hue='Values', data=Df)
+    sns.despine() 
+    plt.title("Unemployment and Inactivity rates quarter-on-quarter change by region", size = 20)
+    plt.xlabel("Region", size=15)
+    plt.ylabel("(%)", size = 15)
+    
+def time_series():
+ global ts
+ #ts = pd.read_excel(sheet, '1',skiprows=range(0,500))
+ ts = ts.drop(ts.columns[1:15],axis=1)
+ ts = ts.rename(columns={ts.columns[1]: 'Economic Activity (%)'})
+ ts = ts.rename(columns={ts.columns[2]: 'Employment Rate (%)'})
+ ts = ts.rename(columns={ts.columns[3]: 'Unemployment Rate (%)'})
+ ts = ts.rename(columns={ts.columns[4]: 'Economic Inactivity (%)'})
+ ts = ts.rename(columns={ts.columns[0]: 'Period'})
+ ts = ts.drop(ts.index[127:])
+ Helper_Var = ts[['Period', 'Economic Activity (%)', 'Employment Rate (%)']]
+
+ plt.figure(figsize=(18,8))
+ plt.xticks(rotation=55)
+ plt.title("UK Long-Run Employment and Economic Activity Rates", size=20)
+ plot = sns.lineplot(x='Period', y='value', hue='variable', data=pd.melt(Helper_Var, ['Period']))
+ for ind, label in enumerate(plot.get_xticklabels()):
+    if ind % 6 == 0:  # every 6th label is kept
+        label.set_visible(True)
+    else:
+        label.set_visible(False)
+
+
+# Scheduling
+
+schedule.every(2).tuesday.at("09:30").do(get_data)
+while True:
+    schedule.run_pending()
+    time.sleep(1)
+
+schedule.every(2).tuesday.at("09:31").do(read_region_data)
+while True:
+    schedule.run_pending()
+    time.sleep(1)
+    
+schedule.every(2).tuesday.at("09:31:30").do(regional_chart)
+  while True:
+     schedule.run_pending()
+     time.sleep(1)
+     
+schedule.every(2).tuesday.at("09:32").do(quarter_change)
+  while True:
+     schedule.run_pending()
+     time.sleep(1)
+     
+schedule.every(2).tuesday.at("09:32:30").do(quarter_change)
+  while True:
+     schedule.run_pending()
+     time.sleep(1)
+     
