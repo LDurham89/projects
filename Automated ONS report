@@ -131,7 +131,7 @@ schedule.every(2).tuesday.at("09:32").do(quarter_change)
      schedule.run_pending()
      time.sleep(1)
      
-schedule.every(2).tuesday.at("09:32:30").do(quarter_change)
+schedule.every(2).tuesday.at("09:32:30").do(time_series)
   while True:
      schedule.run_pending()
      time.sleep(1)
